@@ -3,11 +3,16 @@ const User = require('../models/User');
 const Task = require('../models/Task');
 const { sendSuccess, AppError } = require('../utils/response');
 
-const formatProject = (project, userId) => {
-  const obj = project.toObject ? project.toObject() : { ...project };
-  const membership = obj.members.find((m) => m.userId.toString() === userId.toString());
-  // Populate member users
-  return { ...obj, id: obj._id, myRole: membership?.role };
+const formatMembers = (members) => {
+  return members.map((m) => ({
+    userId: m.userId._id ? m.userId._id.toString() : m.userId.toString(),
+    role: m.role,
+    user: m.userId._id ? {
+      id: m.userId._id.toString(),
+      fullName: m.userId.fullName,
+      email: m.userId.email,
+    } : null,
+  }));
 };
 
 const getProjects = async (req, res, next) => {
@@ -31,6 +36,7 @@ const getProjects = async (req, res, next) => {
         id: obj._id,
         taskCount: countMap[obj._id.toString()] || 0,
         myRole: membership?.role,
+        members: formatMembers(obj.members),
       };
     });
 
@@ -53,7 +59,7 @@ const getProject = async (req, res, next) => {
 
     return sendSuccess(
       res,
-      { project: { ...obj, id: obj._id, taskCount, myRole: membership.role } },
+      { project: { ...obj, id: obj._id, taskCount, myRole: membership.role, members: formatMembers(obj.members) } },
       'Project fetched'
     );
   } catch (err) {
@@ -74,7 +80,7 @@ const createProject = async (req, res, next) => {
     await project.populate('members.userId', 'fullName email');
     const obj = project.toObject();
 
-    return sendSuccess(res, { project: { ...obj, id: obj._id, myRole: 'ADMIN' } }, 'Project created', 201);
+    return sendSuccess(res, { project: { ...obj, id: obj._id, myRole: 'ADMIN', members: formatMembers(obj.members) } }, 'Project created', 201);
   } catch (err) {
     next(err);
   }
@@ -106,7 +112,9 @@ const updateMembers = async (req, res, next) => {
       await project.save();
       await project.populate('members.userId', 'fullName email');
 
-      const addedMember = project.members.find((m) => m.userId._id.toString() === userId);
+      const obj = project.toObject();
+      const formattedMembers = formatMembers(obj.members);
+      const addedMember = formattedMembers.find((m) => m.userId === userId);
       return sendSuccess(res, { member: addedMember }, 'Member added');
     }
 
